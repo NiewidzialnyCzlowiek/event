@@ -49,13 +49,13 @@ func newHandlers() *AppHandlers {
 func TestNoSourceError(t *testing.T) {
 	h := AppHandlers{EventSink: make(chan Event)}
 	err := h.Activate()
-	assert.EqualError(t, err, ErrorNoSource.Error())
+	assert.EqualError(t, err, errorNoSource.Error())
 }
 
 func TestNoSinkError(t *testing.T) {
 	h := AppHandlers{EventSource: make(chan Event)}
 	err := h.Activate()
-	assert.EqualError(t, err, ErrorNoSink.Error())
+	assert.EqualError(t, err, errorNoSink.Error())
 }
 
 func TestAlreadyActiveError(t *testing.T) {
@@ -64,5 +64,5 @@ func TestAlreadyActiveError(t *testing.T) {
 		EventSource: make(chan Event),
 		EventSink:   make(chan Event)}
 	err := h.Activate()
-	assert.EqualError(t, err, ErrorAlreadyActive.Error())
+	assert.EqualError(t, err, errorAlreadyActive.Error())
 }

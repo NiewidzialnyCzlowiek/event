@@ -5,9 +5,9 @@ import (
 )
 
 var (
-	ErrorAlreadyActive = errors.New("handlers have already been activated")
-	ErrorNoSource      = errors.New("the EventSource was not set properly")
-	ErrorNoSink        = errors.New("the EventSink was not set properly")
+	errorAlreadyActive = errors.New("handlers have already been activated")
+	errorNoSource      = errors.New("the EventSource was not set properly")
+	errorNoSink        = errors.New("the EventSink was not set properly")
 )
 
 // EventHandler represents a function that is launched as a response
@@ -15,7 +15,6 @@ var (
 // the []Event. The output events are then published to the peers in the cluster.
 //
 // EventHandlers are registered in Handlers using the Handlers.Register() method.
-//
 type EventHandler = func(e Event) []Event
 
 // AppHandlers represent the algorithm in a form of event handlers.
@@ -78,13 +77,13 @@ func passToSink(events []Event, sink chan Event) {
 
 func (hs *AppHandlers) Activate() error {
 	if hs.active {
-		return ErrorAlreadyActive
+		return errorAlreadyActive
 	}
 	if hs.EventSource == nil {
-		return ErrorNoSource
+		return errorNoSource
 	}
 	if hs.EventSink == nil {
-		return ErrorNoSink
+		return errorNoSink
 	}
 	go func() {
 		hs.log.Infof("Activating event handlers")
