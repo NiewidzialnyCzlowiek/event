@@ -67,7 +67,7 @@ func (s *Sender) RegisterSub(t EventType, addr net.Addr) {
 	if !ok {
 		peers = make([]PeerId, 0, 10)
 	}
-	if !slices.Contains(peers, id) {
+	if _, cont := slices.Contains(peers, id); !cont {
 		peers = append(peers, id)
 		s.subscriptions[t] = peers
 	}
@@ -80,7 +80,7 @@ func (s *Sender) UnregisterSub(t EventType, addr net.Addr) {
 		return
 	}
 	if subs, ok := s.subscriptions[t]; ok {
-		if slices.Contains(subs, id) {
+		if _, cont := slices.Contains(subs, id); cont {
 			s.subscriptions[t] = slices.Filter(subs, func(a PeerId) bool { return a != id })
 		}
 	}
