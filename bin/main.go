@@ -21,15 +21,15 @@ type eventHelloData struct {
 }
 
 type eventGoodbyeData struct {
-	Gb string
+	Goodbye string
 }
 
 func setupNode(sp, ap string) *cluster.Node {
 	commonSer := event.NewSerializer()
 	lf := event.NewDefaultLoggerFactory()
 	l := lf.NewLogger()
-	h := event.NewHandlers(lf, false)
-	h.Register(EventInit, func(e event.Event) []event.Event {
+	h := event.NewAppHandlers(lf, false)
+	h.Register(EventInit, func(e event.Event, p event.Publisher) {
 		hello := eventHelloData{
 			Name:     "Bob",
 			LastName: "Marley",
@@ -39,16 +39,17 @@ func setupNode(sp, ap string) *cluster.Node {
 		err := event.Serialize(&hello, &resp, commonSer)
 		if err != nil {
 			l.Infof("Cannot serialize message: %s", err.Error())
+			return
 		}
-		return []event.Event{resp}
+		p.ToAll(resp)
 	})
 
-	h.Register(EventHello, func(e event.Event) []event.Event {
+	h.Register(EventHello, func(e event.Event, p event.Publisher) {
 		var m eventHelloData
 		err := event.Deserialize(e, &m, commonSer)
 		if err != nil {
 			l.Infof("Error while deserializing message %s", err)
-			return []event.Event{}
+			return
 		}
 		l.Infof("Received HelloEvent with name: %s %s and age %d", m.Name, m.LastName, m.Age)
 		resp := event.Event{Type: EventGoodbye}
@@ -56,20 +57,19 @@ func setupNode(sp, ap string) *cluster.Node {
 		err = event.Serialize(&d, &resp, commonSer)
 		if err != nil {
 			l.Infof("Error while serializing message %s", err)
-			return []event.Event{}
+			return
 		}
-		return []event.Event{resp}
+		p.ToAll(resp)
 	})
 
-	h.Register(EventGoodbye, func(e event.Event) []event.Event {
+	h.Register(EventGoodbye, func(e event.Event, p event.Publisher) {
 		var m eventGoodbyeData
 		err := event.Deserialize(e, &m, commonSer)
 		if err != nil {
 			l.Infof("Error while deserializing message %s", err.Error())
-			return []event.Event{}
+			return
 		}
-		l.Infof("Received EventGoodbye with message %s", m.Gb)
-		return []event.Event{}
+		l.Infof("Received EventGoodbye with message %s", m.Goodbye)
 	})
 
 	config := cluster.Config{

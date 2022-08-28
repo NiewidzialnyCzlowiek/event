@@ -7,7 +7,7 @@ import (
 )
 
 func TestRegisterSub(t *testing.T) {
-	sender := NewSender(NewDefaultLoggerFactory())
+	sender := NewTcpSender(NewDefaultLoggerFactory())
 	addr := new(TestAddr)
 	sender.RegisterSub(1, addr)
 	peers, ok := sender.subscriptions[1]
@@ -16,7 +16,7 @@ func TestRegisterSub(t *testing.T) {
 }
 
 func TestUnregisterSub(t *testing.T) {
-	sender := NewSender(NewDefaultLoggerFactory())
+	sender := NewTcpSender(NewDefaultLoggerFactory())
 	addr := new(TestAddr)
 	id, _ := HashAddr(addr)
 	sender.subscriptions[1] = []PeerId{10, id, 30}

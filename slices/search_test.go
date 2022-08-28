@@ -10,10 +10,14 @@ func TestContainsNumber(t *testing.T) {
 		slice   []int
 		element int
 	}
+	type want struct {
+		index  int
+		exists bool
+	}
 	tests := []struct {
 		name string
 		args args
-		want bool
+		want want
 	}{
 		{
 			name: "Slice contains existing int",
@@ -21,7 +25,7 @@ func TestContainsNumber(t *testing.T) {
 				slice:   []int{1, 2, 3, 4, 5, 6},
 				element: 3,
 			},
-			want: true,
+			want: want{2, true},
 		},
 		{
 			name: "Slice doeas not contain non-existing int",
@@ -29,13 +33,13 @@ func TestContainsNumber(t *testing.T) {
 				slice:   []int{1, 2, 3, 4, 5, 6},
 				element: 10,
 			},
-			want: false,
+			want: want{0, false},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Contains(tt.args.slice, tt.args.element); got != tt.want {
-				t.Errorf("Contains() = %v, want %v", got, tt.want)
+			if index, exists := Contains(tt.args.slice, tt.args.element); index != tt.want.index || exists != tt.want.exists {
+				t.Errorf("Contains() = %v, want %v", want{index, exists}, tt.want)
 			}
 		})
 	}
@@ -46,10 +50,14 @@ func TestContainsString(t *testing.T) {
 		slice   []string
 		element string
 	}
+	type want struct {
+		index  int
+		exists bool
+	}
 	tests := []struct {
 		name string
 		args args
-		want bool
+		want want
 	}{
 		{
 			name: "Slice contains existing string",
@@ -57,7 +65,7 @@ func TestContainsString(t *testing.T) {
 				slice:   []string{"ala", "ma", "kota"},
 				element: "kota",
 			},
-			want: true,
+			want: want{2, true},
 		},
 		{
 			name: "Slice doeas not contain non-existing string",
@@ -65,13 +73,13 @@ func TestContainsString(t *testing.T) {
 				slice:   []string{"ala", "ma", "kota"},
 				element: "psa",
 			},
-			want: false,
+			want: want{0, false},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Contains(tt.args.slice, tt.args.element); got != tt.want {
-				t.Errorf("Contains() = %v, want %v", got, tt.want)
+			if index, exists := Contains(tt.args.slice, tt.args.element); index != tt.want.index || exists != tt.want.exists {
+				t.Errorf("Contains() = %v, want %v", want{index, exists}, tt.want)
 			}
 		})
 	}

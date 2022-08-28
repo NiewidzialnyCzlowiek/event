@@ -8,7 +8,7 @@ import (
 
 func TestRegister(t *testing.T) {
 	h := newHandlers()
-	handl := func(e Event) []Event { t.Log(e.AppData); return nil }
+	handl := func(e Event, p Publisher) { t.Log(e.AppData) }
 	h.Register(1, handl)
 	_, ok := h.f[1]
 	if !ok {
@@ -18,8 +18,8 @@ func TestRegister(t *testing.T) {
 
 func TestHandle(t *testing.T) {
 	h := newHandlers()
-	handl := func(e Event) []Event {
-		return []Event{e}
+	handl := func(e Event, p Publisher) {
+		p.ToAll(e)
 	}
 
 	ty := 10
@@ -33,36 +33,36 @@ func TestHandle(t *testing.T) {
 	}()
 	res := <-h.EventSink
 
-	assert.Equal(t, ty, res.Type, "Invalid event type")
-	assert.Equal(t, mess, string(res.AppData), "Invalid event type")
+	assert.Equal(t, ty, res.Event.Type, "Invalid event type")
+	assert.Equal(t, mess, string(res.Event.AppData), "Invalid event type")
 }
 
 func newHandlers() *AppHandlers {
 	return &AppHandlers{
 		log:         NewDefaultLoggerFactory().NewLogger(),
 		EventSource: make(chan Event),
-		EventSink:   make(chan Event),
+		EventSink:   make(chan targettedEvent),
 		concurrent:  false,
 	}
 }
 
 func TestNoSourceError(t *testing.T) {
-	h := AppHandlers{EventSink: make(chan Event)}
+	h := AppHandlers{EventSink: make(chan targettedEvent)}
 	err := h.Activate()
-	assert.EqualError(t, err, ErrorNoSource.Error())
+	assert.EqualError(t, err, errorNoSource.Error())
 }
 
 func TestNoSinkError(t *testing.T) {
 	h := AppHandlers{EventSource: make(chan Event)}
 	err := h.Activate()
-	assert.EqualError(t, err, ErrorNoSink.Error())
+	assert.EqualError(t, err, errorNoSink.Error())
 }
 
 func TestAlreadyActiveError(t *testing.T) {
 	h := AppHandlers{
 		active:      true,
 		EventSource: make(chan Event),
-		EventSink:   make(chan Event)}
+		EventSink:   make(chan targettedEvent)}
 	err := h.Activate()
-	assert.EqualError(t, err, ErrorAlreadyActive.Error())
+	assert.EqualError(t, err, errorAlreadyActive.Error())
 }

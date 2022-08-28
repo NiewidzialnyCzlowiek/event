@@ -10,14 +10,12 @@ import (
 	"net/netip"
 )
 
+// CtrlMsgType indicates how the message should be interpreted
+// by the node. The CtrlMsgType defines the command and
+// the CtrlMsg body holds the arguments for the command.
 type CtrlMsgType = int
-type CtrlMsg struct {
-	Type      CtrlMsgType
-	AppPort   uint16
-	Addr      netip.AddrPort
-	EventType EventType
-}
 
+// The set of available control message types.
 const (
 	CtrlSubscribe CtrlMsgType = iota
 	CtrlUnsubscribe
@@ -25,9 +23,39 @@ const (
 	CtrlRegister
 )
 
+const CtrlRespOffset CtrlMsgType = 10000
+const (
+	CtrlSubscribeResp   CtrlMsgType = CtrlSubscribe + CtrlRespOffset
+	CtrlUnsubscribeResp             = CtrlUnsubscribe + CtrlRespOffset
+	CtrlConnectToResp               = CtrlConnectTo + CtrlRespOffset
+	CtrlRegisterResp                = CtrlRegister + CtrlRespOffset
+)
+
+// Represents a service protocol message
+type CtrlMsg struct {
+	// SerialNumber specifies an id unique for the message
+	// sender. Together with the sender address it creates
+	// an unique identifier for the message.
+	SerialNumber uint64
+	// Type specifies the type of the message and should be
+	// one of Ctrl... constants defined in this file.
+	Type CtrlMsgType
+	// AppPort is the application protocol port of the CtrlMsg sender.
+	// It is used to calculate the peer unique identifier when required.
+	AppPort uint16
+	// Addr represents a node in a form of the address and port.
+	// This field is used in CtrlConnectTo message to indicate where
+	// the receiver node should connect to.
+	Addr netip.AddrPort
+	// EventType indicates what event the message refers to.
+	// It is used in CtrlSubscribe and CtrlUnsubscribe messages.
+	EventType EventType
+}
+
 type IdCtrlMsg struct {
-	Source net.Addr
-	Msg    CtrlMsg
+	Source   net.Addr
+	SourceId uint32
+	Msg      CtrlMsg
 }
 
 type EventType = int
@@ -36,11 +64,10 @@ type Event struct {
 	AppData []byte
 }
 
-// type SerializedConn interface {
-// 	Write(any) error
-// 	Read(any) error
-// 	Close() error
-// }
+type targettedEvent struct {
+	Broadcast bool
+	Event     Event
+}
 
 type SerializedConn struct {
 	io.ReadWriteCloser

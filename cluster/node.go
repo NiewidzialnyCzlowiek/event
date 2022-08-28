@@ -1,8 +1,10 @@
 package cluster
 
 import (
+	"errors"
 	"net"
 	"net/netip"
+	"strconv"
 
 	"github.com/niewidzialnyczlowiek/event"
 	"go.uber.org/zap"
@@ -18,24 +20,41 @@ const (
 	NormalNode
 )
 
+var (
+	errCannotCreateServiceIO = errors.New("cannot instantiate ServiceIO")
+)
+
 // Config is a single node configuration
 type Config struct {
-	Role            NodeRole
-	Addr            string
-	ServicePort     string
+	// Role specifies if this node will serve the role of a seed
+	// or normal node
+	Role NodeRole
+	// Addr specifies the interface on which the service
+	// and application listeners will be ran
+	Addr string
+	// ServicePort defines the port on which the service protocol
+	// will send and receive messages
+	ServicePort string
+	// ApplicationPort defines the port on which the application
+	// protocol listener will be ran
 	ApplicationPort string
-	SeedsAddr       []string
-	LogerFactory    event.LoggerFactory
+	// SeedsAddr defines a list of seeds addresses with their
+	// service ports defined
+	SeedsAddr []string
+	// LoggerFactory specifies the logger factory used to
+	// instantiate loggers in the node and it's internal
+	// components
+	LogerFactory event.LoggerFactory
 }
 
 // Node represents a single node in the event system cluster
 type Node struct {
 	config   Config
 	listener event.Listener
-	service  *ServiceIO
+	service  *serviceIO
 	seeds    []uint32
 	log      *zap.SugaredLogger
-	sender   *event.Sender
+	sender   event.Sender
 	handlers *event.AppHandlers
 }
 
@@ -49,7 +68,7 @@ func NewNode(config Config, handlers *event.AppHandlers) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	listenServiceAddr, err := net.ResolveTCPAddr("tcp", serviceAddr)
+	listenServiceAddr, err := net.ResolveUDPAddr("udp", serviceAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +79,16 @@ func NewNode(config Config, handlers *event.AppHandlers) (*Node, error) {
 		seeds = append(seeds, sa)
 	}
 	listener := event.NewTcpListener(listenAppAddr, config.LogerFactory)
-	sender := event.NewSender(config.LogerFactory)
+	sender := event.NewTcpSender(config.LogerFactory)
 	handlers.Plug(listener, sender)
+	serviceIo := NewServiceIO(listenServiceAddr, seeds, config.LogerFactory)
+	if serviceIo == nil {
+		return nil, errCannotCreateServiceIO
+	}
 	node := &Node{
 		config,
 		listener,
-		NewServiceIO(listenServiceAddr, seeds, config.LogerFactory),
+		serviceIo,
 		[]uint32{},
 		config.LogerFactory.NewLogger(),
 		sender,
@@ -85,7 +108,8 @@ func (n *Node) Run() {
 	n.handlers.Activate()
 	n.listener.Run()
 	n.sender.Run()
-	go n.runServiceLayer()
+	n.service.run()
+	n.handleCtrlMessages()
 }
 
 func (n *Node) RegisterSub(e event.EventType, from string) error {
@@ -115,30 +139,51 @@ func (n *Node) Stop() {
 	n.listener.Stop()
 }
 
-func (n *Node) runServiceLayer() {
-	n.service.receiveAndPass()
-	for msg := range n.service.CtrlSink {
-		addr, _, _ := net.SplitHostPort(msg.Source.String())
-		appAddr := hostPortToNetAddr(addr, msg.Msg.AppPort)
-		switch msg.Msg.Type {
-		case event.CtrlConnectTo:
+func (n *Node) handleCtrlMessages() {
+	go func() {
+		for msg := range n.service.CtrlSink {
+			addr, svcPort, _ := net.SplitHostPort(msg.Source.String())
+			appAddr := hostPortToNetAddr(addr, msg.Msg.AppPort)
+			switch msg.Msg.Type {
+			case event.CtrlConnectTo:
+				err := n.Connect(addr, strconv.Itoa(int(msg.Msg.AppPort)), svcPort)
+				if err != nil {
+					n.log.Warnf("Cannot connect to the node at %s, %s", addr, err.Error())
+				} else {
+					n.log.Infof("Connected to peer at %s", addr)
+				}
 
-		case event.CtrlRegister:
-			if n.config.Role == SeedNode {
-				n.registerNewPeer(appAddr, msg.Msg)
+			case event.CtrlRegister:
+				if n.config.Role == SeedNode {
+					n.registerPeerInCluster(appAddr, msg)
+				}
+
+			case event.CtrlSubscribe:
+				n.sender.RegisterSub(msg.Msg.EventType, appAddr)
+
+			case event.CtrlUnsubscribe:
+				n.sender.UnregisterSub(msg.Msg.EventType, appAddr)
+
+			default:
+				n.log.Errorf("Unknown message type: %d", msg.Msg.Type)
 			}
-		case event.CtrlSubscribe:
-			n.sender.RegisterSub(msg.Msg.EventType, appAddr)
-		case event.CtrlUnsubscribe:
-			n.sender.UnregisterSub(msg.Msg.EventType, appAddr)
-		default:
-			n.log.Errorf("Unknown message type: %d", msg.Msg.Type)
 		}
-	}
+	}()
 }
 
-func (n *Node) registerNewPeer(addr net.Addr, data event.CtrlMsg) {
-
+func (n *Node) registerPeerInCluster(appAddr net.Addr, msg event.IdCtrlMsg) {
+	n.service.AddPeer(appAddr.String(), msg.Source.String())
+	peers := n.sender.GetPeers()
+	for _, peer := range peers {
+		n.service.send(msg.Source, event.CtrlMsg{
+			Type: event.CtrlConnectTo,
+			Addr: netip.MustParseAddrPort(peer.String()),
+		})
+	}
+	n.service.broadcast(event.CtrlMsg{
+		Type: event.CtrlConnectTo,
+		Addr: netip.MustParseAddrPort(appAddr.String()),
+	})
 }
 
 func hostPortToNetAddr(host string, port uint16) net.Addr {
