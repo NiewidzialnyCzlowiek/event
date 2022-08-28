@@ -6,12 +6,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// Listener contains a network listener that accepts events
+// from other nodes and passes them to a chanel
 type Listener interface {
+	// Returns a channel that the events from
+	// other nodes are passed to
 	EventSink() chan Event
+	// Runs the network listener and starts
+	// passing events to the EventSink()
 	Run()
+	// Stops the network listener
 	Stop()
 }
 
+// TcpListener is an implementation of the event.Listener interface
+// based on the TCP protocol. It includes network messages serialization
+// using the event.SerializedConn struct.
 type TcpListener struct {
 	appAddr     net.Addr
 	listener    net.Listener
@@ -43,28 +53,24 @@ func (l *TcpListener) Stop() {
 }
 
 func (l *TcpListener) Run() {
-	l.acceptNewConns()
+	l.runListener()
 	l.handleNewConns()
 }
 
-func (l *TcpListener) acceptNewConns() {
-	runListener(l.appAddr, l.appConnSink, l.log)
-}
-
-func runListener(addr net.Addr, connSink chan net.Conn, log *zap.SugaredLogger) {
-	appListener, err := net.Listen("tcp", addr.String())
+func (l *TcpListener) runListener() {
+	appListener, err := net.Listen("tcp", l.appAddr.String())
 	if err != nil {
-		log.Errorf("Cannot start app listener on %s: %s", addr.String(), err.Error())
+		l.log.Errorf("Cannot start app listener on %s: %s", l.appAddr.String(), err.Error())
 		return
 	}
 	go func() {
 		for {
 			appConn, err := appListener.Accept()
 			if err != nil {
-				log.Errorf("Stopping app listener: %s", err.Error())
+				l.log.Errorf("Stopping app listener: %s", err.Error())
 				return
 			}
-			pushConn(appConn, connSink)
+			pushConn(appConn, l.appConnSink)
 		}
 	}()
 }

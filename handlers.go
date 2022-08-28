@@ -10,38 +10,57 @@ var (
 	errorNoSink        = errors.New("the EventSink was not set properly")
 )
 
-// EventHandler represents a function that is launched as a response
-// to the occouring events. EventHandler receives an Event and returns
-// the []Event. The output events are then published to the peers in the cluster.
+type Publisher interface {
+	ToOne(e Event)
+	ToAll(e Event)
+}
+
+type bufferedPublisher struct {
+	events []targettedEvent
+}
+
+func (bp *bufferedPublisher) ToOne(e Event) {
+	bp.events = append(bp.events, targettedEvent{
+		Broadcast: false,
+		Event:     e,
+	})
+}
+
+func (bp *bufferedPublisher) ToAll(e Event) {
+	bp.events = append(bp.events, targettedEvent{
+		Broadcast: true,
+		Event:     e,
+	})
+}
+
+// EventHandler represents a function that is launched
+// as a response to the occouring events. EventHandler
+// receives an Event to handle and a Publisher. The Publisher
+// interface exposes functions that allow the user
+// to publish events as part of event handling.
 //
 // EventHandlers are registered in Handlers using the Handlers.Register() method.
-type EventHandler = func(e Event) []Event
+type EventHandler = func(e Event, publisher Publisher)
 
 // AppHandlers represent the algorithm in a form of event handlers.
 // You can use the handlers separately and connect them to
 // event source manually or use the cluster.Node type that
 // automates the communication between cluster nodes.
 //
-// Use the Handler.Register method to register event handlers.
-//
-// You must provide handlers for the event.Init and event.PoisonPill.
-// This events represent the initialization and the finalization
-// of the algorithm. The event.Init event is published only to the
-// local algorithm by the platform. The event.PoisonPill has to be
-// published by the user by returing it from an EventHandler.
+// Use the AppHandlers.Register method to register event handlers.
 type AppHandlers struct {
 	f           map[EventType]EventHandler
 	log         LoggerImpl
 	EventSource chan Event
-	EventSink   chan Event
+	EventSink   chan targettedEvent
 	concurrent  bool
 	active      bool
 }
 
-// NewHandlers returns empty Handlers object with the specified logger.
+// NewAppHandlers returns empty Handlers object with the specified logger.
 // The concurrent parameter specifies if the event handlers should be
 // executed one by one or concurrently just after the event is received.
-func NewHandlers(lf LoggerFactory, concurrent bool) *AppHandlers {
+func NewAppHandlers(lf LoggerFactory, concurrent bool) *AppHandlers {
 	return &AppHandlers{
 		f:           make(map[int]EventHandler),
 		log:         lf.NewLogger(),
@@ -54,9 +73,9 @@ func NewHandlers(lf LoggerFactory, concurrent bool) *AppHandlers {
 
 // Plug connects the handlers to events passed from the Listener
 // and passes the result of event handler invocations to the Sender
-func (h *AppHandlers) Plug(l Listener, s *Sender) {
+func (h *AppHandlers) Plug(l Listener, s Sender) {
 	h.EventSource = l.EventSink()
-	h.EventSink = s.EventSource
+	h.EventSink = s.EventSource()
 }
 
 func (hs *AppHandlers) handle(e Event) {
@@ -65,11 +84,14 @@ func (hs *AppHandlers) handle(e Event) {
 		hs.log.Warnf("No event handler for event %d\n", e.Type)
 		return
 	}
-	res := h(e)
-	go passToSink(res, hs.EventSink)
+	buff := new(bufferedPublisher)
+	h(e, buff)
+	if len(buff.events) > 0 {
+		go passToSink(buff.events, hs.EventSink)
+	}
 }
 
-func passToSink(events []Event, sink chan Event) {
+func passToSink(events []targettedEvent, sink chan targettedEvent) {
 	for i := range events {
 		sink <- events[i]
 	}
@@ -106,4 +128,8 @@ func (hs *AppHandlers) Register(t EventType, h EventHandler) {
 		hs.f = make(map[EventType]EventHandler)
 	}
 	hs.f[t] = h
+}
+
+func (hs *AppHandlers) Unregister(t EventType) {
+	delete(hs.f, t)
 }
