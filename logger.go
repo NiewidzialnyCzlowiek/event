@@ -16,6 +16,6 @@ func NewDefaultLoggerFactory() *DefaultLoggerFactory {
 }
 
 func (lf *DefaultLoggerFactory) NewLogger() LoggerImpl {
-	log, _ := zap.NewDevelopment()
+	log, _ := zap.NewProduction()
 	return log.Sugar()
 }

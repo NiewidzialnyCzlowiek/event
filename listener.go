@@ -63,6 +63,7 @@ func (l *TcpListener) runListener() {
 		l.log.Errorf("Cannot start app listener on %s: %s", l.appAddr.String(), err.Error())
 		return
 	}
+	l.listener = appListener
 	go func() {
 		for {
 			appConn, err := appListener.Accept()

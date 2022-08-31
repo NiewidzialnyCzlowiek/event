@@ -76,6 +76,7 @@ type SerializedConn struct {
 }
 
 func NewSerializedConn(conn io.ReadWriteCloser) *SerializedConn {
+	gob.Register(Event{})
 	sc := SerializedConn{
 		conn,
 		*gob.NewEncoder(conn),
@@ -116,9 +117,30 @@ func NewSerializer() *Serializer {
 	return &ser
 }
 
+func (s *Serializer) Register(values []any) {
+	for _, v := range values {
+		err := s.enc.Encode(v)
+		if err != nil {
+			panic(err)
+		}
+		data := s.encBuf.Bytes()
+		s.encBuf.Reset()
+		_, err = s.decBuf.Write(data)
+		if err != nil {
+			panic(err)
+		}
+		err = s.dec.Decode(v)
+		if err != nil {
+			panic(err)
+		}
+		s.decBuf.Reset()
+	}
+}
+
 // Serialize fills target's appData field with the serialized data
 // using the provided serializer
 func Serialize[T any](data *T, target *Event, ser *Serializer) error {
+	ser.encBuf.Reset()
 	err := ser.enc.Encode(data)
 	if err != nil {
 		return err

@@ -28,15 +28,6 @@ func TestSerializedStream(t *testing.T) {
 	assert.Equal(t, message, rec, "Invalid message.")
 }
 
-// func TestSerializedSize(t *testing.T) {
-// 	serializer := NewSerializer()
-// 	ctrl := CtrlMsg{}
-// 	e := Event{}
-// 	_ = Serialize(&ctrl, &e, serializer)
-// 	t.Logf("Serialized ctrl message size: %d", len(e.AppData))
-// 	t.Fail()
-// }
-
 func TestSerialize(t *testing.T) {
 	s := NewSerializer()
 	d := testData{
@@ -84,6 +75,19 @@ func TestTypeEncodedOnlyOnce(t *testing.T) {
 	Serialize(&td, &e2, s)
 
 	assert.Less(t, len(e2.AppData), len(e1.AppData), "Second encoding should be shorter (type definition skipped)")
+}
+
+func TestSerializerRegister(t *testing.T) {
+	s := NewSerializer()
+	td := testData{}
+	s.Register([]any{&td})
+
+	e1 := Event{Type: 1}
+	e2 := Event{Type: 1}
+
+	Serialize(&td, &e1, s)
+	Serialize(&td, &e2, s)
+	assert.Equal(t, len(e1.AppData), len(e2.AppData), "")
 }
 
 func TestHash(t *testing.T) {

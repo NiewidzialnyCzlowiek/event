@@ -27,7 +27,8 @@ var (
 // Config is a single node configuration
 type Config struct {
 	// Role specifies if this node will serve the role of a seed
-	// or normal node
+	// or normal node. Seed is responsible for distributing
+	// the data about new nodes in the cluster.
 	Role NodeRole
 	// Addr specifies the interface on which the service
 	// and application listeners will be ran
@@ -39,7 +40,8 @@ type Config struct {
 	// protocol listener will be ran
 	ApplicationPort string
 	// SeedsAddr defines a list of seeds addresses with their
-	// service ports defined
+	// service ports defined. There should be two or more
+	// seed nodes in the cluster.
 	SeedsAddr []string
 	// LoggerFactory specifies the logger factory used to
 	// instantiate loggers in the node and it's internal
@@ -101,9 +103,7 @@ func NewNode(config Config, handlers *event.AppHandlers) (*Node, error) {
 // It launches goroutines to handle incomming connections
 // and save them in the node data structures
 // After initializing all the necessary components the node starts to connect with
-// the peers. After connecting with the specified number of nodes it starts
-// the algorithm by publishing event.Init to itself (to local algorithm).
-// To properly initialize
+// the peers.
 func (n *Node) Run() {
 	n.handlers.Activate()
 	n.listener.Run()
@@ -130,6 +130,10 @@ func (n *Node) Connect(addr, appPort, servicePort string) error {
 	return nil
 }
 
+// Handle puts the event into the AppHandlers event source.
+// This method blocks the execution but only until there is
+// space in the event buffer. It does not block until the
+// handler is executed.
 func (n *Node) Handle(e event.Event) {
 	n.handlers.EventSource <- e
 }

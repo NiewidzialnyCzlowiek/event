@@ -10,26 +10,64 @@ var (
 	errorNoSink        = errors.New("the EventSink was not set properly")
 )
 
+// Publisher allows the user to publish events inside
+// event handlers.
+// The events are published after the handler exits
 type Publisher interface {
-	ToOne(e Event)
+	// ToAll publishes the event to the network. It guarantees
+	// that the order in which the events are published is the
+	// preserved upon delivery.
 	ToAll(e Event)
+	// ToSelf publishes the event only to the node that
+	// executes the event where the Publisher is used.
+	ToSelf(e Event)
+	// BackgroundTask asynchronously executes the task
+	// and publishes the notification event to self when
+	// the task finishes. The task can be any function that
+	// accepts no parameters and returns no value.
+	//
+	// The task is ran outside the event handlers path of
+	// execution and is fully asynchronous. If the task needs
+	// to access any variable that the event handler accesses,
+	// this action must be protected with a mutual exclusion
+	// mechanism.
+	BackgroundTask(finishNotification Event, task func())
+}
+
+type taskRecord struct {
+	notification Event
+	task         func()
 }
 
 type bufferedPublisher struct {
-	events []targettedEvent
+	events          []targettedEvent
+	toSelf          []Event
+	backgroundTasks []taskRecord
 }
 
-func (bp *bufferedPublisher) ToOne(e Event) {
-	bp.events = append(bp.events, targettedEvent{
-		Broadcast: false,
-		Event:     e,
-	})
+func newBufferedPublisher() *bufferedPublisher {
+	return &bufferedPublisher{
+		events:          []targettedEvent{},
+		toSelf:          []Event{},
+		backgroundTasks: []taskRecord{},
+	}
 }
 
 func (bp *bufferedPublisher) ToAll(e Event) {
 	bp.events = append(bp.events, targettedEvent{
 		Broadcast: true,
 		Event:     e,
+	})
+}
+
+func (bp *bufferedPublisher) ToSelf(e Event) {
+	bp.toSelf = append(bp.toSelf, e)
+}
+
+func (bp *bufferedPublisher) BackgroundTask(finishNotification Event, task func()) {
+	bp.backgroundTasks = append(bp.backgroundTasks, taskRecord{
+		notification: finishNotification,
+		task:         task,
 	})
 }
 
@@ -84,17 +122,37 @@ func (hs *AppHandlers) handle(e Event) {
 		hs.log.Warnf("No event handler for event %d\n", e.Type)
 		return
 	}
-	buff := new(bufferedPublisher)
+	buff := newBufferedPublisher()
 	h(e, buff)
 	if len(buff.events) > 0 {
-		go passToSink(buff.events, hs.EventSink)
+		go func() {
+			if len(buff.events) > 1 {
+				hs.log.Warnf("Two events passed")
+			}
+			for i := range buff.events {
+				hs.EventSink <- buff.events[i]
+			}
+		}()
+	}
+	if len(buff.toSelf) > 0 {
+		go func(toSelf []Event) {
+			for i := range toSelf {
+				hs.EventSource <- toSelf[i]
+			}
+		}(buff.toSelf)
+	}
+	if len(buff.backgroundTasks) > 0 {
+		for i := range buff.backgroundTasks {
+			runTask(buff.backgroundTasks[i], hs.EventSource)
+		}
 	}
 }
 
-func passToSink(events []targettedEvent, sink chan targettedEvent) {
-	for i := range events {
-		sink <- events[i]
-	}
+func runTask(task taskRecord, notificationSink chan Event) {
+	go func() {
+		task.task()
+		notificationSink <- task.notification
+	}()
 }
 
 func (hs *AppHandlers) Activate() error {
